@@ -44,7 +44,7 @@ opts.register('globalTag', None,
               vpo.VarParsing.varType.string,
               'argument of process.GlobalTag.globaltag')
 
-opts.register('reco', 'hltPhase2',
+opts.register('reco', 'HLT_TRKv06_TICL',
               vpo.VarParsing.multiplicity.singleton,
               vpo.VarParsing.varType.string,
               'keyword defining reconstruction methods for JME inputs')
@@ -59,10 +59,10 @@ opts.register('pfdqm', 0,
               vpo.VarParsing.varType.int,
               'added monitoring histograms for selected PF-Candidates')
 
-opts.register('skimTracks', False,
+opts.register('verbosity', 0,
               vpo.VarParsing.multiplicity.singleton,
-              vpo.VarParsing.varType.bool,
-              'skim original collection of generalTracks (only tracks associated to first N pixel vertices)')
+              vpo.VarParsing.varType.int,
+              'level of output verbosity')
 
 opts.register('output', 'out.root',
               vpo.VarParsing.multiplicity.singleton,
@@ -74,14 +74,23 @@ opts.parseArguments()
 ###
 ### base configuration file
 ###
-if   opts.reco == 'HLT_TRKv00':      from JMETriggerAnalysis.NTuplizers.hltPhase2_TRKv00_cfg      import cms, process
-elif opts.reco == 'HLT_TRKv00_TICL': from JMETriggerAnalysis.NTuplizers.hltPhase2_TRKv00_TICL_cfg import cms, process
-elif opts.reco == 'HLT_TRKv02':      from JMETriggerAnalysis.NTuplizers.hltPhase2_TRKv02_cfg      import cms, process
-elif opts.reco == 'HLT_TRKv02_TICL': from JMETriggerAnalysis.NTuplizers.hltPhase2_TRKv02_TICL_cfg import cms, process
-elif opts.reco == 'HLT_TRKv06':      from JMETriggerAnalysis.NTuplizers.hltPhase2_TRKv06_cfg      import cms, process
-elif opts.reco == 'HLT_TRKv06_TICL': from JMETriggerAnalysis.NTuplizers.hltPhase2_TRKv06_TICL_cfg import cms, process
+
+# flag: skim original collection of generalTracks (only tracks associated to first N pixel vertices)
+opt_skimTracks = False
+
+opt_reco = opts.reco
+if opt_reco.endswith('_skimmedTracks'):
+   opt_reco = opt_reco[:-len('_skimmedTracks')]
+   opt_skimTracks = True
+
+if   opt_reco == 'HLT_TRKv00':      from JMETriggerAnalysis.Common.configs.hltPhase2_TRKv00_cfg      import cms, process
+elif opt_reco == 'HLT_TRKv00_TICL': from JMETriggerAnalysis.Common.configs.hltPhase2_TRKv00_TICL_cfg import cms, process
+elif opt_reco == 'HLT_TRKv02':      from JMETriggerAnalysis.Common.configs.hltPhase2_TRKv02_cfg      import cms, process
+elif opt_reco == 'HLT_TRKv02_TICL': from JMETriggerAnalysis.Common.configs.hltPhase2_TRKv02_TICL_cfg import cms, process
+elif opt_reco == 'HLT_TRKv06':      from JMETriggerAnalysis.Common.configs.hltPhase2_TRKv06_cfg      import cms, process
+elif opt_reco == 'HLT_TRKv06_TICL': from JMETriggerAnalysis.Common.configs.hltPhase2_TRKv06_TICL_cfg import cms, process
 else:
-   raise RuntimeError('invalid argument for option "reco": "'+opts.reco+'"')
+   raise RuntimeError('invalid argument for option "reco": "'+opt_reco+'"')
 
 ###
 ### add analysis sequence (JMETrigger NTuple)
@@ -262,6 +271,13 @@ process.schedule.extend([process.analysisNTupleEndPath])
 if opts.globalTag is not None:
    process.GlobalTag.globaltag = opts.globalTag
 
+# fix for AK4PF Phase-2 JECs
+process.GlobalTag.toGet.append(cms.PSet(
+  record = cms.string('JetCorrectionsRecord'),
+  tag = cms.string('JetCorrectorParametersCollection_PhaseIIFall17_V5b_MC_AK4PF'),
+  label = cms.untracked.string('AK4PF'),
+))
+
 # max number of events to be processed
 process.maxEvents.input = opts.maxEvents
 
@@ -288,7 +304,7 @@ process.TFileService = cms.Service('TFileService', fileName = cms.string(opts.ou
 # Tracking Monitoring
 if opts.trkdqm:
 
-   if opts.reco in ['HLT_TRKv00', 'HLT_TRKv00_TICL', 'HLT_TRKv02', 'HLT_TRKv02_TICL']:
+   if opt_reco in ['HLT_TRKv00', 'HLT_TRKv00_TICL', 'HLT_TRKv02', 'HLT_TRKv02_TICL']:
       process.reconstruction_pixelTrackingOnly_step = cms.Path(process.reconstruction_pixelTrackingOnly)
       process.schedule.extend([process.reconstruction_pixelTrackingOnly_step])
 
@@ -301,7 +317,7 @@ if opts.trkdqm:
      + process.TrackHistograms_hltGeneralTracks
    )
 
-   if opts.skimTracks:
+   if opt_skimTracks:
       process.TrackHistograms_hltGeneralTracksOriginal = TrackHistogrammer.clone(src = 'generalTracksOriginal')
       process.trkMonitoringSeq += process.TrackHistograms_hltGeneralTracksOriginal
 
@@ -340,7 +356,7 @@ if opts.pfdqm > 0:
      ('_hltPuppi', 'hltPuppi', '(pt > 0)', pfCandidateHistogrammerRecoPFCandidate),
    ]
 
-   if 'TICL' in opts.reco:
+   if 'TICL' in opt_reco:
       _candTags += [
         ('_pfTICL', 'pfTICL', '', pfCandidateHistogrammerRecoPFCandidate),
       ]
@@ -431,7 +447,7 @@ if opts.logs:
      ),
    )
 
-   if opts.skimTracks:
+   if opt_skimTracks:
       process.MessageLogger.debugModules += [
         'hltTrimmedPixelVertices',
         'generalTracks',
@@ -484,7 +500,7 @@ else:
    ]
 
 # skimming of tracks
-if opts.skimTracks:
+if opt_skimTracks:
 
    from JMETriggerAnalysis.Common.hltPhase2_skimmedTracks import customize_hltPhase2_skimmedTracks
    process = customize_hltPhase2_skimmedTracks(process)
@@ -516,17 +532,17 @@ if opts.dumpPython is not None:
    open(opts.dumpPython, 'w').write(process.dumpPython())
 
 # print-outs
-print '--- jmeTriggerNTuple_cfg.py ---'
-print ''
-print 'option: output =', opts.output
-print 'option: reco =', opts.reco
-print 'option: skimTracks =', opts.skimTracks
-print 'option: trkdqm =', opts.trkdqm
-print 'option: pfdqm =', opts.pfdqm
-print 'option: dumpPython =', opts.dumpPython
-print ''
-print 'process.GlobalTag =', process.GlobalTag.dumpPython()
-print 'process.source =', process.source.dumpPython()
-print 'process.maxEvents =', process.maxEvents.dumpPython()
-print 'process.options =', process.options.dumpPython()
-print '-------------------------------'
+if opts.verbosity > 0:
+   print '--- jmeTriggerNTuple_cfg.py ---'
+   print ''
+   print 'option: output =', opts.output
+   print 'option: reco =', opts.reco, '(skimTracks = '+str(opt_skimTracks)+')'
+   print 'option: trkdqm =', opts.trkdqm
+   print 'option: pfdqm =', opts.pfdqm
+   print 'option: dumpPython =', opts.dumpPython
+   print ''
+   print 'process.GlobalTag =', process.GlobalTag.dumpPython()
+   print 'process.source =', process.source.dumpPython()
+   print 'process.maxEvents =', process.maxEvents.dumpPython()
+   print 'process.options =', process.options.dumpPython()
+   print '-------------------------------'
